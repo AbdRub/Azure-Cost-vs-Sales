@@ -1,2 +1,7 @@
 secrets.json
 venv
+onetime_invoices
+recurring_invoices
+GWSFile.ipynb
+allInvoices.parquet
+DB
