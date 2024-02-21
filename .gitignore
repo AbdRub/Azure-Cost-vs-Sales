@@ -2,5 +2,6 @@
 ./CSVs/*
 venv
 secrets.json
+.gitignore
 
 
