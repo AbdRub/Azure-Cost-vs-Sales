@@ -1,7 +1,6 @@
-./DB/*
-./CSVs/*
+/DB/*
+/CSVs/*
 venv
 secrets.json
-.gitignore
 
 
