@@ -1,7 +1,6 @@
-secrets.json
+./DB/*
+./CSVs/*
 venv
-onetime_invoices
-recurring_invoices
-GWSFile.ipynb
-allInvoices.parquet
-DB
+secrets.json
+
+
