@@ -63,7 +63,7 @@ def main():
     pd.set_option('display.max_rows', None)
 
     try:
-        cxn = db.connect('./DB/dbfile')
+        cxn = db.connect('')
         print( 'connected to Db')
     except Exception as e:
         print(e)
@@ -74,7 +74,7 @@ def main():
     # Parse Secrets
 
     try:
-        secrets = json.load(open(file='./secrets.json'))
+        secrets = json.load(open(file='../secrets.json'))
         print('Secrets file found.')
     except:
         print('Secrets file not found or some error in file. Make sure the file exists in the same directory as the code.')
@@ -125,17 +125,13 @@ def main():
         print('Invoices fetched...')
 
 
-        latestOfficeInvoice = cxn.query(f"select id from allInvoicesDF where id like 'G%' order by invoicedate desc limit 1 ")
-        print(latestOfficeInvoice)
-        latestOfficeInvoice = str(latestOfficeInvoice).replace("┌────────────┐\n│     id     │\n│  varchar   │\n├────────────┤\n│ ",'').replace(" │\n└────────────┘\n",'')
-        print('latest invoice: ',latestOfficeInvoice)
+        latestOfficeInvoice = cxn.query(f"select id,billingPeriodStartDate from allInvoicesDF where id like 'G%' order by invoicedate desc limit 1 ")
+        df=latestOfficeInvoice.to_df()
+        latestOfficeInvoice,billingMonth = (df['id'].iloc[0],df['billingPeriodStartDate'].iloc[0])
 
-        # previousInvoice = cxn.query("select id from invoices where id like 'G%' order by invoicedate  desc limit 1 offset 1 ")
-        # previousInvoice = str(previousInvoice).replace("┌────────────┐\n│     id     │\n│  varchar   │\n├────────────┤\n│ ",'').replace(" │\n└────────────┘\n",'')
-        # print('prv invoice: ',previousInvoice)
         
         latestMonthDF = pd.DataFrame(getOneTimeInvoiceLineItems(latestOfficeInvoice))
-        print(latestMonthDF.head())
+
         
         requiredColumns = """
         customerId,
@@ -143,8 +139,10 @@ def main():
         customerDomainName,
         invoiceNumber,
         orderDate,
-        invoiceNumber,
         substring(skuName,0,30) skuName,
+        skuid,
+        productname,
+        productid,
         subscriptionId,
         chargeType,
         effectiveUnitPrice,
@@ -156,7 +154,6 @@ def main():
         chargeEndDate,
         referenceId,
         billableQuantity,
-        monthname(cast(chargeStartDate as datetime)) || cast(year(cast(chargeStartDate as datetime))as varchar)  invoiceMonth,
         subscriptionStartDate,
         subscriptionEndDate,
         monthname(cast(subscriptionstartdate as datetime)) || cast(year(cast(subscriptionstartdate as datetime))as varchar) as  mn
@@ -165,18 +162,20 @@ def main():
         cxn.query(f"create temp table office_temp as select {requiredColumns} from latestMonthDF where productid like 'CFQ%'")
         cxn.query(f"""
  
-            with
+            with 
                 t0 as (
                 select {requiredColumns}
-                from office_temp  
-                --and customerDomainName = 'domainName'
+                from office_temp where productid like 'CFQ%'  
+                --and customerDomainName = 'yaxiso365.onmicrosoft.com'
+                --and customerDomainName = 'annet50.onmicrosoft.com'
                 --and subscriptionid = '12266bbd-6d4a-422f-d413-4c688cc48550'
                 )
                 ,
                 
                 t1 as                                            /* club rows that have similar charge types and reference IDs. */
 
-                (select customerid,customerdomainname,max(cast(orderDate as datetime)) orderdate1, last(invoicenumber order by orderdate) newInvoiceNumber
+                (select customername,customerid,customerdomainname,skuname,skuid,productname,max(cast(orderDate as datetime)) orderdate1
+                ,last(invoicenumber order by orderdate) newInvoiceNumber
                 ,subscriptionid,date_trunc('day',cast(chargestartdate as datetime)) truncatedchargestartdate
                 , chargeenddate,chargetype
                 ,first(billablequantity order by totalforcustomer desc) fbqty , last(billablequantity order by totalforcustomer desc) lbqty
@@ -187,19 +186,39 @@ def main():
                 ,referenceid
                 ,mn
                 from t0  
-                group by customerid,customerdomainname,subscriptionid,truncatedchargestartdate, chargeenddate,chargetype,referenceid,mn
+                group by customername,customerid,customerdomainname,subscriptionid,skuname,skuid,productname,truncatedchargestartdate, chargeenddate,chargetype,referenceid,mn
                 order by subscriptionid,orderdate1)
                 ,
+
+                t2 as
+
+                (select *
+                ,sum(QtyAdded_adjustedForNegativity) over(partition by customerid,customerdomainname, subscriptionid, mn ,cast(chargeenddate as date) order by orderdate1 rows between unbounded preceding and  0 following) as finalLicenseQty
+                ,truncatedchargestartdate newSDate
+                , lead(truncatedchargestartdate) over(partition by customerid, customerdomainname,subscriptionid,mn order by orderdate1 ) adjustedChargeStartDate 
+                ,case when adjustedChargeStartDate is null then date_add(cast(chargeenddate as date), interval 1 day) 
+                else adjustedChargeStartDate end as  lead_adjustedChargeStartDate,
+                from t1
+                    order by subscriptionid,orderdate1 )
+                ,
+
+                subscriptionWiseBreakdown as
+                
+                    (select customerid,customerdomainname,subscriptionid,round(sum(newTotal),2) sm from t2 group by 1,2,3 order by 4 desc)
+                ,
+
                 final as 
                 (
-                select customerid,customerdomainname,orderdate1,newinvoicenumber,subscriptionid,truncatedchargestartdate chargestartdate,chargeenddate
-                ,date_diff('day',cast(truncatedchargestartdate as date),cast(chargeenddate as date)) noOfDays
-                ,chargetype,QtyAdded_adjustedForNegativity qty,newtotal,referenceid,mn
-                from t1
-
+                select customername,customerid,customerDomainName,newInvoiceNumber as invoiceId,orderDate1 orderDate,subscriptionId,skuname,skuid,productname,newSdate as chargeStartDate, cast(lead_adjustedChargeStartDate as date) as chargeEndDate,chargeType, finalLicenseQty Qty, newTotal Amount
+                --, mn billingMonth
+                from t2
+                order by subscriptionid,orderdate
                 )
-                select * from final
-                """).to_csv('test.csv')
+                
+                select *,'{billingMonth}' as invoiceMonth from final 
+                
+                
+            """).to_csv('../test.csv')
         
         return None
     
