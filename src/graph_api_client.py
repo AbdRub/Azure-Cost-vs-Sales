@@ -3,6 +3,7 @@ import json
 import time
 import requests
 from typing import Optional, Dict
+from bigquery_writer import BigQueryUploader
 from blob_client import AzureBlobDownloader
 from blob_url_parser import BlobURLParser
 from resource_location import ResourceLocationParser
@@ -26,7 +27,7 @@ class GraphAPIClient:
         self.scope = scope
         self.access_token: Optional[str] = None
         self.base_token_url = f'https://login.microsoftonline.com/{self.tenant_id}/oauth2/v2.0/token'
-        print('Graph API Client init success')
+        print('Graph API Client initialized.')
 
     def get_access_token(self) -> str:
         """
@@ -49,7 +50,7 @@ class GraphAPIClient:
             'scope': self.scope
         }
 
-        print(f"Authenticating with URL for access_token")
+        print(f"Authenticating with Microsoft Graph API...")
         response = requests.post(token_url, data=body, headers=headers)
         
         if response.status_code == 200:
@@ -62,50 +63,16 @@ class GraphAPIClient:
 
         return self.access_token
 
-    def initialize_billed_request(self, api_url: str, invoice_id :str) -> Dict[str, str]:
-        """
-        Submit a request to generate a billing report based on an invoice ID.
-
-        Args:
-            api_url (str): The API URL to submit the billing request.
-            invoice_id (str): The invoice ID for which to generate the billing report.
-
-        Returns:
-            Dict[str, str]: A dictionary containing headers, which includes the URL to check the operation status.
-
-        Raises:
-            Exception: If the request fails due to missing tokens or server errors.
-        """
-        if not self.access_token:
-            raise Exception("Access token is missing. Authenticate first.")
-
-        headers = {
-            'Authorization': f'Bearer {self.access_token}',
-            'Content-Type': 'application/json'
-        }
-        body = {
-            "invoiceId": invoice_id
-        }
-
-        response = requests.post(api_url, headers=headers, json=body)
-
-        if response.status_code == 202:
-            print('Request accepted. Processing has started.')
-            return response.headers
-        else:
-            raise Exception(f"Failed to make request. Status code: {response.status_code}. Content: {response.content}")
-        
-        
     def initialize_unbilled_request(self, api_url: str, billing_period: str) -> Dict[str, str]:
         """
-        Submit a request to generate a billing report based on an invoice ID.
+        Submit a request to generate a billing report based on the billing period.
 
         Args:
             api_url (str): The API URL to submit the billing request.
             billing_period (str): The billing period for which to generate the billing report.
 
         Returns:
-            Dict[str, str]: A dictionary containing headers, which includes the URL to check the operation status.
+            Dict[str, str]: A dictionary containing headers, including the URL to check the operation status.
 
         Raises:
             Exception: If the request fails due to missing tokens or server errors.
@@ -118,14 +85,10 @@ class GraphAPIClient:
             'Content-Type': 'application/json'
         }
         body = {
-
             "currencyCode": "INR",
-
             "billingPeriod": billing_period,
-
             "attributeSet": "full"
-
-            }
+        }
 
         response = requests.post(api_url, headers=headers, json=body)
 
@@ -177,8 +140,6 @@ class GraphAPIClient:
                 raise Exception(f"Request failed. Status code: {response.status_code}. Response: {response.content}")
 
 
-
-
 # Example usage of GraphAPIClient
 def main() -> None:
     """
@@ -198,12 +159,6 @@ def main() -> None:
     if not access_token:
         raise Exception("Failed to authenticate with Microsoft.")
     
-            # Test billed rq
-    # headers = graph_client.initialize_billed_request(api_url=secrets.billed_endpoint, invoice_id='G058476717')
-    # operation_url = headers.get('Location')
-    # if not operation_url:
-    #     raise Exception("Failed to initialize billed request.")
-
     # Test unbilled request
     headers = graph_client.initialize_unbilled_request(api_url=secrets.unbilled_endpoint, billing_period='current')
     operation_url = headers.get('Location')
@@ -230,7 +185,7 @@ def main() -> None:
     try:
         # Download blob into the in-memory stream
         downloader.download_blob_to_stream(container_name, blob_name, blob_stream)
-        
+
         # Unzip the in-memory stream
         unzipped_stream = downloader.unzip_blob_stream(blob_stream)
 
@@ -238,6 +193,21 @@ def main() -> None:
         unzipped_stream.seek(0)  # Reset the pointer
         if unzipped_stream.read(1):  # Check if there's any data
             print("Blob unzipped and downloaded to memory stream successfully.")
+            unzipped_stream.seek(0)  # Reset pointer again after reading
+            
+            # Initialize BigQueryUploader
+            uploader = BigQueryUploader(
+                project_id=secrets.project_id,
+                dataset_id=secrets.dataset_id,
+                table_id=secrets.table_id
+            )
+
+            # Ensure the table exists or will be created
+            uploader.create_table_if_not_exists()
+
+            # Upload the unzipped stream to BigQuery
+            uploader.upload_data(unzipped_stream)
+
         else:
             print("Blob download and unzip failed.")
     except Exception as e:
@@ -247,6 +217,7 @@ def main() -> None:
         blob_stream.seek(0)
         if 'unzipped_stream' in locals():
             unzipped_stream.seek(0)  # Ensure this is also reset if it was created
+
 
 if __name__ == "__main__":
     main()
