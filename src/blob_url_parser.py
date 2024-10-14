@@ -46,8 +46,8 @@ class BlobURLParser:
 
 # Example URL
 if __name__ == "__main__":
-    url = "https://adlsreconbuprodeastus201.blob.core.windows.net/billedusagefastpath/v1/PartnerTenantId=6e75cca6-47f0-47a3-a928-9d5315750bd9/BillingMonth=202408/InvoiceId=G058476717/InvoiceVersion=202409080713/Fragment=full/PartitionType=default"
+    url = "https://adlsreconprodeastus2001.blob.core.windows.net/unbilledusagefastpath/v1/202410021222/PartnerTenantId=6e75cca6-47f0-47a3-a928-9d5315750bd9/BillingMonth=202410/Currency=INR/Fragment=full/PartitionType=default"
 
     storage_account_name, container_name = BlobURLParser(url).extract_storage_info()
-    print("Storage Account Name:", storage_account_name)
-    print("Container Name:", container_name)
+    # print("Storage Account Name:", storage_account_name)
+    # print("Container Name:", container_name)

@@ -19,6 +19,13 @@ class SecretsManager:
             self.project_id = os.getenv('PROJECT_ID')
             self.dataset_id = os.getenv('DATASET_ID')
             self.table_id = os.getenv('TABLE_ID')
+            self.invoice_url = os.getenv('INVOICE_URL')
+            self.invoice_line_item_url = os.getenv('INVOICE_LINE_ITEMS_URL')
+            self.fabric_server = os.getenv('FABRIC_SERVER')
+            self.fabric_client_id = os.getenv('FABRIC_CLIENT_ID')
+            self.fabric_client_secret = os.getenv('FABRIC_CLIENT_SECRET')
+            self.blob_container_name = os.getenv('BLOB_CONTAINER_NAME')
+            self.blob_connection_string = os.getenv('BLOB_CONNECTION_STRING')
         else:
             print("couldnt load env.")
             return
