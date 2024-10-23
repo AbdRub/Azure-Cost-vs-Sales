@@ -6,7 +6,7 @@ import pyodbc
 from IPython.display import display
 
 # Initialize SecretsManager to fetch credentials
-secrets = SecretsManager()
+
 
 class PartnerCenterAPIClient:
     def __init__(self, base_url: str, client_id: str, client_secret: str, tenant_id: str, 
@@ -203,6 +203,9 @@ def main():
     Main function to execute the workflow of fetching invoices, processing data, 
     and interacting with the datawarehouse.
     """
+
+    secrets = SecretsManager()
+    
     base_url = secrets.partner_api_base_url
     client_id = secrets.client_id
     client_secret = secrets.client_secret

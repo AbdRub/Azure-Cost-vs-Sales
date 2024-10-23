@@ -121,6 +121,8 @@ class PartnerCenterAPIClient:
         # Filter invoices to find those starting with 'G'
         filtered_invoices = [invoice for invoice in invoice_ids if invoice['id'].startswith('G')]
 
+
+
         # Get the current date and calculate the previous month
         today = datetime.today()
         first_day_of_current_month = today.replace(day=1)
@@ -133,6 +135,47 @@ class PartnerCenterAPIClient:
         matching_invoice_ids = [invoice['id'] for invoice in filtered_invoices if invoice['billingPeriodStartDate'].startswith(target_month)]
 
         return matching_invoice_ids
+    
+    def convert_line_items_to_df(line_items : list[dict]):
+        """
+        Converts line items to a pandas DataFrame.
+
+        Args:
+            line_items (list[dict]): List of line items to convert.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the line items.
+        """
+
+        final_df=pd.DataFrame()
+
+        for items in line_items:
+            temp_df=pd.DataFrame(items)
+            final_df=pd.concat([final_df,temp_df],ignore_index=True)
+
+        # Convert line items to DataFrame
+        # invoice_line_items_df = pd.DataFrame(line_items)
+
+        return final_df
+    
+    def edit_invoice_df(invoice_line_items_df):
+        """
+        Edits the invoice DataFrame by removing unnecessary columns.
+
+        Args:
+            invoice_df (pd.DataFrame): The invoice DataFrame to edit.
+
+        Returns:
+            pd.DataFrame: The edited invoice DataFrame.
+        """
+        # Remove unnecessary columns
+        invoice_line_items_df = invoice_line_items_df.drop(columns=['attributes', 'productQualifiers', 'priceAdjustmentDescription'])
+
+        # convert the billing month column from str to date
+        invoice_line_items_df['billingMonth'] = pd.to_datetime(invoice_line_items_df['billingMonth'])
+
+        return invoice_line_items_df
+     
 
     def get_invoice_line_items(self, invoice_id: str) -> list[dict]:
         """
@@ -166,7 +209,7 @@ class PartnerCenterAPIClient:
         else:
             raise Exception(f"Error fetching invoice line items for {invoice_id}: {response.status_code}, {response.content}")
 
-    def write_to_blob_storage(self, line_items: list[dict], invoice_id: str):
+    def write_to_blob_storage(self, line_items: pd.DataFrame, invoice_id: str):
         """
         Writes the line items to Azure Blob Storage in Parquet format.
 
@@ -175,21 +218,16 @@ class PartnerCenterAPIClient:
             invoice_id (str): The ID of the invoice, used for naming the file.
         """
         # Sanitize invoice ID to remove invalid characters
-        sanitized_invoice_id = re.sub(r'[^a-zA-Z0-9\-]', '_', invoice_id)
+        
 
         # Convert complex types like lists or dictionaries into strings to avoid unsupported types in Parquet
-        for item in line_items:
-            for key, value in item.items():
-                if isinstance(value, (dict, list)):
-                    item[key] = str(value)  # Convert to string to avoid Parquet complex types
 
-        # Create a DataFrame from the line items
-        df = pd.DataFrame(line_items)
 
-        # Create a Parquet file in memory
-        parquet_buffer = BytesIO()
-        table = pa.Table.from_pandas(df)
-        pq.write_table(table, parquet_buffer)
+        # Create a CSV file in memory
+        line_items.to_csv(index=False)
+
+
+      
 
         # Ensure the container exists
         container_client = self.blob_service_client.get_container_client(self.blob_container_name)
@@ -202,9 +240,9 @@ class PartnerCenterAPIClient:
             blob="invoice_line_items.parquet"
         )
 
-        # Upload Parquet content to Azure Blob Storage
-        parquet_buffer.seek(0)  # Move buffer to the beginning
-        blob_client.upload_blob(parquet_buffer.getvalue(), overwrite=True)
+        # Upload CSV content to Azure Blob Storage
+          # Move buffer to the beginning
+        blob_client.upload_blob(line_items, overwrite=True)
         print(f"Successfully uploaded invoice {invoice_id} line items to Azure Blob Storage in Parquet format.")
 
 def main():
@@ -241,6 +279,7 @@ def main():
         # Fetch invoice IDs
         print("Fetching invoice IDs...")
         invoice_ids = api_client.get_invoice_ids()
+        print(invoice_ids)
         print(f"Retrieved {len(invoice_ids)} invoice IDs that start with G.")
 
         # Calculate the previous month dynamically
