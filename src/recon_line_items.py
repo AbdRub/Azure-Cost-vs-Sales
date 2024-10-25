@@ -10,14 +10,13 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from io import BytesIO
 import time
-import json
 
 # Initialize SecretsManager to fetch credentials
 secrets = SecretsManager()
 
 class PartnerCenterAPIClient:
     def __init__(self, base_url: str, client_id: str, client_secret: str, tenant_id: str, 
-                 invoice_url: str, invoice_line_items_url: str, scope: str, blob_connection_string: str, blob_container_name: str):
+                 invoice_url: str, invoice_line_items_url: str, scope: str, blob_connection_string: str, blob_container_name: str, blob_directory_name: str):
         """
         Initializes the PartnerCenterAPIClient with the provided credentials and URLs.
         """
@@ -33,19 +32,14 @@ class PartnerCenterAPIClient:
 
         # Initialize BlobServiceClient
         self.blob_service_client = BlobServiceClient.from_connection_string(blob_connection_string)
-        self.blob_container_name = blob_container_name.lower()
+        self.blob_directory_name = blob_directory_name
 
     def check_blob_exists(self, blob_name: str) -> bool:
         """
-        Checks if the specified blob exists in the Azure Blob Storage container.
-
-        Args:
-            blob_name (str): The name of the blob to check.
-
-        Returns:
-            bool: True if the blob exists, False otherwise.
+        Checks if the specified blob exists in the Azure Blob Storage directory.
         """
-        blob_client = self.blob_service_client.get_blob_client(container=self.blob_container_name, blob=blob_name)
+        blob_path = f"{self.blob_directory_name}/{blob_name}"
+        blob_client = self.blob_service_client.get_blob_client(container=self.blob_container_name, blob=blob_path)
         return blob_client.exists()
 
     def resume_fabric_capacity(self):
@@ -131,7 +125,7 @@ class PartnerCenterAPIClient:
         target_month = last_month.strftime('%Y-%m')
 
         # Collect IDs for the invoices matching the target month
-        matching_invoice_ids = [invoice['id'] for invoice in filtered_invoices]
+        matching_invoice_ids = [invoice['id'] for invoice in filtered_invoices if invoice['billingPeriodStartDate'].startswith(target_month)]
 
         return matching_invoice_ids
 
@@ -167,46 +161,42 @@ class PartnerCenterAPIClient:
         else:
             raise Exception(f"Error fetching invoice line items for {invoice_id}: {response.status_code}, {response.content}")
 
-    def write_to_blob_storage(self, line_items: list[dict], invoice_id: str,df : pd.DataFrame):
+    def write_to_blob_storage(self, line_items: list[dict], blob_name: str):
         """
-        Writes the line items to Azure Blob Storage in Parquet format.
+        Writes the line items to Azure Blob Storage in CSV format.
 
         Args:
             line_items (list[dict]): The line items to write.
-            invoice_id (str): The ID of the invoice, used for naming the file.
+            blob_name (str): The name of the blob to store the data.
         """
-        # Sanitize invoice ID to remove invalid characters
-        sanitized_invoice_id = re.sub(r'[^a-zA-Z0-9\-]', '_', invoice_id)
+        # Convert complex types like lists or dictionaries into strings for CSV
+        for item in line_items:
+            for key, value in item.items():
+                if isinstance(value, (dict, list)):
+                    item[key] = str(value)  # Convert to string to handle complex types in CSV
 
-        # Convert complex types like lists or dictionaries into strings to avoid unsupported types in Parquet
-        # for item in line_items:
-        #     for key, value in item.items():
-        #         if isinstance(value, (dict, list)):
-        #             item[key] = str(value)  # Convert to string to avoid Parquet complex types
+        # Create a DataFrame from the line items
+        df = pd.DataFrame(line_items)
 
-        # # Create a DataFrame from the line items
-        # df = pd.DataFrame(line_items)
-
-        # Create a Parquet file in memory
-        # parquet_buffer = BytesIO()
-        # table = pa.Table.from_pandas(df)
-        # pq.write_table(table, parquet_buffer)
+        # Create a CSV file in memory
+        csv_buffer = StringIO()
+        df.to_csv(csv_buffer, index=False)
 
         # Ensure the container exists
         container_client = self.blob_service_client.get_container_client(self.blob_container_name)
         if not container_client.exists():
             container_client.create_container()
 
-        # Get blob client for the container and blob (using sanitized invoice_id for filename)
+        # Get blob client for the container and blob using the blob_name parameter
         blob_client = self.blob_service_client.get_blob_client(
             container=self.blob_container_name,
-            blob=f"full_load.csv"
+            blob=f"{self.blob_directory_name}/{blob_name}"  # Use blob_name here
         )
 
-        # Upload Parquet content to Azure Blob Storage
-        # parquet_buffer.seek(0)  # Move buffer to the beginning
-        blob_client.upload_blob(df, overwrite=True)
-        print(f"Successfully uploaded invoice {invoice_id} line items to Azure Blob Storage in Parquet format.")
+        # Upload CSV content to Azure Blob Storage
+        blob_client.upload_blob(csv_buffer.getvalue(), overwrite=True)
+        print(f"Successfully uploaded line items to blob '{blob_name}' in Azure Blob Storage.")
+
 
 def main():
     # Load secrets
@@ -219,20 +209,28 @@ def main():
     scope = secrets.scope
     blob_connection_string = secrets.blob_connection_string
     blob_container_name = secrets.blob_container_name
+    blob_directory_name = secrets.blob_directory_name
 
     # Initialize API client
-    api_client = PartnerCenterAPIClient(base_url, client_id, client_secret, tenant_id, invoice_url, invoice_line_items_url, scope, blob_connection_string, blob_container_name)
+    api_client = PartnerCenterAPIClient(base_url, client_id, client_secret, tenant_id, invoice_url, invoice_line_items_url, scope, blob_connection_string, blob_container_name, blob_directory_name)
 
     try:
-        # Check if the blob exists before continuing with Fabric capacity resumption
-        # blob_name = "invoice_line_items.parquet"  # Adjust as needed
-        # print(f"Checking if blob '{blob_name}' exists in the container...")
-        # if api_client.check_blob_exists(blob_name):
-        #     print(f"Blob '{blob_name}' already exists. Exiting process.")
-        #     return  # Exit if the blob is present
+        # Calculate previous year and month
+        current_date = datetime.now()
+        previous_month = current_date.month - 1 if current_date.month > 1 else 12
+        previous_year = current_date.year if current_date.month > 1 else current_date.year - 1
 
-        # print(f"Blob '{blob_name}' does not exist. Proceeding with resuming Fabric capacity...")
-        # api_client.resume_fabric_capacity()
+        # Set blob name with previous month in 'RCLI-YYYYMM' format
+        blob_name = f"RCLI-{previous_year}{previous_month:02d}.csv"
+
+        print(f"Checking if blob '{blob_name}' exists in the directory '{api_client.blob_directory_name}'...")
+
+        if api_client.check_blob_exists(blob_name):
+            print(f"Blob '{blob_name}' already exists in the directory. Exiting process.")
+            return  # Exit if the blob is present
+
+        print(f"Blob '{blob_name}' does not exist in the directory. Proceeding with resuming Fabric capacity...")
+        api_client.resume_fabric_capacity()
 
         # Fetch access token and invoice data
         print("Fetching access token...")
@@ -244,49 +242,32 @@ def main():
         invoice_ids = api_client.get_invoice_ids()
         print(f"Retrieved {len(invoice_ids)} invoice IDs that start with G.")
 
-        # # Calculate the previous month dynamically
-        # today = datetime.today()
-        # first_day_of_current_month = today.replace(day=1)
-        # last_month = first_day_of_current_month - timedelta(days=1)
-        # billing_month = last_month.strftime('%Y-%m-01')
-        # last_month_name = last_month.strftime('%B')  # Get the name of the previous month
+        # Calculate the previous month dynamically
+        today = datetime.today()
+        first_day_of_current_month = today.replace(day=1)
+        last_month = first_day_of_current_month - timedelta(days=1)
+        billing_month = last_month.strftime('%Y-%m-01')
+        last_month_name = last_month.strftime('%B')  # Get the name of the previous month
 
         # Filter invoices for the previous month
-        # print(f"Filtering invoices to find invoices for {last_month_name}...")
+        print(f"Filtering invoices to find invoices for {last_month_name}...")
         matching_invoice_ids = api_client.filter_invoices(invoice_ids)
-        print(len(matching_invoice_ids))
 
-        # for invoices in matching_invoice_ids:
-        #     invoice_id = matching_invoice_ids[0]
-        #     line_items = api_client.get_invoice_line_items(invoice_id)
-        #     with open("sample.json","w") as file:
-        #         json.dump(line_items, file)
-        #     breakpoint()
-           
+        if matching_invoice_ids:
+            print(f"Found matching invoice ID(s) for {last_month_name}: {matching_invoice_ids}")
+            invoice_id = matching_invoice_ids[0]
+            print(f"Fetching line items for invoice ID: {invoice_id}...")
 
+            line_items = api_client.get_invoice_line_items(invoice_id)
 
+            # Write to blob storage using the same blob_name
+            api_client.write_to_blob_storage(line_items, blob_name)
 
-
-
-
-        # if matching_invoice_ids:
-        #     print(f"Found matching invoice ID(s) for {last_month_name}: {matching_invoice_ids}")
-        #     invoice_id = matching_invoice_ids[0]
-        #     print(f"Fetching line items for invoice ID: {invoice_id}...")
-        #     line_items = api_client.get_invoice_line_items(invoice_id)
-
-        #     # Add billing_month information
-        #     for item in line_items:
-        #         item['billing_month'] = billing_month
-
-        #     # Write line items to Azure Blob Storage in Parquet format
-        #     api_client.write_to_blob_storage(line_items, invoice_id,blob_name="fullload")
-
-        # else:
-        #     print(f"No matching invoices for {last_month_name}.")
+        else:
+            print(f"No matching invoices for {last_month_name}.")
 
     except Exception as e:
         print(f"An error occurred: {e}")
 
 if __name__ == "__main__":
-    main()  
+    main()

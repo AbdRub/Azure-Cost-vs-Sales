@@ -43,7 +43,7 @@ def main():
     # Load secrets for Azure Blob Storage connection
     connection_string = secrets.blob_connection_string
     container_name = secrets.blob_container_name
-    blob_name = "invoice_line_items.parquet"  # Replace with the name of the blob you want to delete
+    blob_name = "invoice_line_items.csv"  # Replace with the name of the blob you want to delete
 
     try:
         # Delete the specified blob

@@ -25,6 +25,7 @@ class SecretsManager:
             self.fabric_client_id = os.getenv('FABRIC_CLIENT_ID')
             self.fabric_client_secret = os.getenv('FABRIC_CLIENT_SECRET')
             self.blob_container_name = os.getenv('BLOB_CONTAINER_NAME')
+            self.blob_directory_name = os.getenv('BLOB_DIRECTORY_NAME')
             self.blob_connection_string = os.getenv('BLOB_CONNECTION_STRING')
         else:
             print("couldnt load env.")

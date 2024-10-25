@@ -287,15 +287,6 @@ def main():
     print(type(final_df))
     print("uploading the file")
     api_client.write_to_blob_storage(df=final_df)
-          
-            
-            
-           
-
-
-
-
-
 
         # if matching_invoice_ids:
         #     print(f"Found matching invoice ID(s) for {last_month_name}: {matching_invoice_ids}")
