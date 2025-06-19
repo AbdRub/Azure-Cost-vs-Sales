@@ -1,76 +1,166 @@
 # Azure Cost vs Sales
 
-This repository, **Azure-Cost-vs-Sales**, provides a comprehensive analysis of Azure cloud costs in relation to sales data. The primary goal is to help organizations understand the relationship between their cloud expenditures and revenue, enabling data-driven decisions for cost optimization and maximizing return on investment (ROI).
+## Overview
 
-## Features
-
-- **Data Ingestion**: Import Azure billing/export data and sales reports.
-- **Data Processing**: Clean, transform, and join cost and sales data.
-- **Visualization**: Generate interactive charts and dashboards to compare costs vs. sales over time, by product, region, or customer segment.
-- **Reporting**: Export summary reports for stakeholders.
-- **Customization**: Adapt analysis to specific business needs or additional data sources.
-
-## Getting Started
-
-### Prerequisites
-
-- Python 3.8+ (or specify relevant version)
-- [Azure SDK for Python](https://learn.microsoft.com/en-us/azure/developer/python/)
-- pandas, matplotlib, seaborn, (and other required libraries)
-
-You can install dependencies with:
-
-```bash
-pip install -r requirements.txt
-```
-
-### Data Preparation
-
-1. **Azure Cost Data**: Export your Azure billing data (CSV/JSON format) from the Azure Portal or Cost Management APIs.
-2. **Sales Data**: Prepare your sales reports in CSV or Excel format.
-
-Place your data files in the appropriate `data/` directory or update config as needed.
-
-### Usage
-
-Run the main analysis script:
-
-```bash
-python analyze_cost_vs_sales.py --cost-data data/azure_costs.csv --sales-data data/sales.csv
-```
-
-This will process the data and generate comparative reports and visualizations in the `output/` directory.
-
-### Configuration
-
-Configuration options (such as file paths, grouping parameters, output preferences) can be set in the `config.yaml` file.
-
-## Project Structure
-
-```
-Azure-Cost-vs-Sales/
-├── data/               # Raw cost and sales data files
-├── scripts/            # Data processing and analysis scripts
-├── output/             # Generated reports and visualizations
-├── requirements.txt    # Python dependencies
-├── config.yaml         # Configuration file
-└── README.md           # This file
-```
-
-1. Fork this repo
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## License
-
-[MIT License](LICENSE)
-
-## Contact
-
-For questions or support, please open an issue or contact [AbdRub](https://github.com/AbdRub).
+**Azure Cost vs Sales** is a Python project designed to automate the retrieval and analysis of Azure Partner Center billing data. It connects to the Microsoft Partner Center API, fetches invoice data, stores it in a DuckDB database, and allows for interactive querying and analysis using SQL and pandas. This tool is ideal for organizations and partners seeking to reconcile Azure cloud costs with sales and perform deeper financial or operational analysis.
 
 ---
 
-*Empowering data-driven cloud cost management.*
+## Features
+
+- **Automated Authentication:** Uses OAuth2 refresh token flow to securely obtain API access tokens.
+- **Invoice Retrieval:** Fetches all invoices from the Azure Partner Center API.
+- **Local Database Storage:** Uses DuckDB for efficient local analytics and SQL querying.
+- **Interactive Querying:** Supports both SQL (via DuckDB) and pandas DataFrame operations.
+- **Configurable Secrets:** Credentials are managed securely using a `secrets.json` file.
+- **Robust Logging and Error Handling:** Tracks each stage of the workflow and handles exceptions gracefully.
+
+---
+
+## Directory Structure
+
+```
+src/
+  └── main.py          # Main script for fetching and analyzing invoices
+secrets.json           # Credentials for API and database (not included, user must provide)
+duckdb.db              # Local DuckDB database file (created/used by script)
+```
+
+---
+
+## Requirements
+
+- Python 3.8+
+- The following Python packages:
+  - `requests`
+  - `pandas`
+  - `numpy`
+  - `duckdb`
+  - `zipfile` (standard library)
+  - `io` (standard library)
+  - `json` (standard library)
+  - `datetime` (standard library)
+  - `warnings` (standard library)
+
+Install dependencies using pip:
+
+```bash
+pip install requests pandas numpy duckdb
+```
+
+---
+
+## Setup
+
+1. **Clone the Repository**
+
+   ```bash
+   git clone https://github.com/AbdRub/Azure-Cost-vs-Sales.git
+   cd Azure-Cost-vs-Sales
+   ```
+
+2. **Create `secrets.json`**
+
+   In the root or parent directory, provide a `secrets.json` file with your Partner Center credentials:
+
+   ```json
+   {
+     "refresh_token": "YOUR_REFRESH_TOKEN",
+     "app_id": "YOUR_APP_ID",
+     "app_secret": "YOUR_APP_SECRET"
+   }
+   ```
+
+3. **Ensure DuckDB Database**
+
+   The script will connect to a local DuckDB database file (`duckdb.db`). If it does not exist, it will be created.
+
+---
+
+## Usage
+
+From the `src` directory (or project root), run:
+
+```bash
+python src/main.py
+```
+
+**Workflow Steps:**
+
+1. **Set Display Options:** Configures pandas and warning settings for better output.
+2. **Parse Secrets:** Reads API credentials from `secrets.json`.
+3. **Connect to DuckDB:** Establishes a connection to the local database.
+4. **Authenticate:** Exchanges refresh token for access token with Microsoft OAuth2.
+5. **Fetch Invoices:** Retrieves all invoices via Partner Center API.
+6. **Display Data:** Converts invoices to a pandas DataFrame and displays the first 5 records using DuckDB SQL.
+
+---
+
+## Code Structure
+
+The main logic is in `src/main.py` and includes:
+
+- **Utility Functions:** For setting display options, connecting to DuckDB, and parsing secrets.
+- **API Functions:** For obtaining OAuth2 tokens and fetching invoices.
+- **Database Functions:** For executing and printing SQL queries on DuckDB.
+- **Main Script:** Orchestrates the above steps, handles workflow, and prints informative logs.
+
+---
+
+## Example Output
+
+```
+main script started execution at 19 Jun 2025 04:30 PM
+Trying to parse secrets file
+Secrets file found
+Trying to connect to DuckDB
+Connected to DuckDB
+Trying to obtain access token
+Refresh Token valid, access token obtained.
+Fetching invoices
+Fetched 10 invoices
+[Shows first 5 records as a SQL table]
+```
+
+---
+
+## Troubleshooting
+
+- **Secrets File Not Found:** Ensure `secrets.json` is present and correctly formatted.
+- **DuckDB Connection Issues:** Check file and permissions for `duckdb.db`.
+- **API Authentication Errors:** Validate refresh token, app ID, and app secret.
+- **Missing Dependencies:** Reinstall required Python packages.
+
+---
+
+## Security
+
+- **Do NOT share your `secrets.json` or database files.**
+- Ensure that your credentials are stored securely and are not committed to source control.
+
+---
+
+## Customization
+
+- Modify SQL queries in `main.py` to perform custom analysis.
+- Extend the script to load invoice data into DuckDB for long-term analytics.
+- Integrate additional Partner Center API endpoints as needed.
+
+---
+
+## License
+
+This project is for demonstration and internal analytics purposes. Please check the repository for license details.
+
+---
+
+## Author
+
+[AbdRub](https://github.com/AbdRub)
+
+---
+
+## References
+
+- [Microsoft Partner Center API Documentation](https://docs.microsoft.com/en-us/partner-center/develop/)
+- [DuckDB Documentation](https://duckdb.org/)
