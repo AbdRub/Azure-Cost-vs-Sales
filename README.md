@@ -57,10 +57,6 @@ Azure-Cost-vs-Sales/
 └── README.md           # This file
 ```
 
-## Contributing
-
-Contributions are welcome! Please open issues or pull requests for feature suggestions, bug fixes, or enhancements.
-
 1. Fork this repo
 2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
 3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
